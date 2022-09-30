@@ -1,0 +1,1 @@
+﻿new OptimizedRaycasting.Game1().Run();
