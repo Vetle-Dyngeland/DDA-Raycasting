@@ -59,7 +59,7 @@ namespace OptimizedRaycasting.Managers
             if(exitCondition.Pressed()) game.Exit();
 
             levelManager.Update();
-            raycaster.Update(gameTime, levelManager.level);
+            raycaster.Update(levelManager.level);
         }
 
         public void Draw(GameTime gameTime)

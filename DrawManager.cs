@@ -42,7 +42,7 @@ namespace OptimizedRaycasting.Managers
             for(int layer = 0; layer < sprites.Count; layer++)
                 DrawLayer(layer);
 
-            raycaster.DrawLine(spriteBatch);
+            raycaster.DrawLines(spriteBatch);
             raycaster.DrawPoints(spriteBatch);
 
             spriteBatch.End();

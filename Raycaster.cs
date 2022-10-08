@@ -1,58 +1,35 @@
-﻿using Microsoft.Xna.Framework;
+﻿using Apos.Input;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
-using Apos.Input;
 using System;
 using Xssp.MonoGame.Primitives2D;
-using Microsoft.Xna.Framework.Content;
 
 namespace OptimizedRaycasting.Managers
 {
     public class Raycaster
     {
-        private Vector2 playerPos;
         private readonly Vector2?[] intersectionPoints = new Vector2?[360];
-
-        private readonly ICondition[] moveConditions = new KeyboardCondition[] {
-            new(Keys.W), new(Keys.S), new(Keys.A), new(Keys.D)
-        };
-        private readonly ICondition drawLineCondition = new MouseCondition(MouseButton.LeftButton);
-
+        private Vector2 rayStart;
         private readonly int tileSize;
 
         private Texture2D circleTexture;
 
         public Raycaster(int tileSize) => this.tileSize = tileSize;
 
-        public void Update(GameTime gameTime, bool[,] map)
+        public void Update(bool[,] map)
         {
-            if(circleTexture == null) circleTexture = ContentLoader.circleTexture;
+            circleTexture ??= ContentLoader.circleTexture;
 
-            MovePoints(gameTime);
-            
-            if(playerPos.X > 0 && playerPos.Y > 0 && playerPos.X < map.GetLength(0) && playerPos.Y < map.GetLength(1))
-                for(int angle = 0; angle < 360; angle++) {
-                    intersectionPoints[angle] = null;
-                    CastRay(map, playerPos, angle);
-                }
+            rayStart = InputHelper.NewMouse.Position.ToVector2() / tileSize;
+            for(int angle = 0; angle < 360; angle++)
+                CastRay(map, angle);
         }
-
-        private void MovePoints(GameTime gameTime)
+        private void CastRay(bool[,] map, int angle)
         {
-            float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
-            Vector2 moveVector = Vector2.Zero;
-            moveVector.Y = Convert.ToInt16(moveConditions[0].Held()) - Convert.ToInt16(moveConditions[1].Held());
-            moveVector.X = Convert.ToInt16(moveConditions[2].Held()) - Convert.ToInt16(moveConditions[3].Held());
-            if(moveVector.Length() != 0) moveVector /= moveVector.Length();
+            intersectionPoints[angle] = null;
 
-            const int moveSpeed = 164;
-            playerPos += -moveVector * moveSpeed * deltaTime;
-        }
-
-        private void CastRay(bool[,] map, Vector2 rayStart, int angle)
-        {
-            Vector2 rayEnd = (rayStart + new Vector2(MathF.Sin(angle), MathF.Cos(angle))) / tileSize;
-            rayStart /= tileSize;
+            float radiants = MathHelper.ToRadians(angle);
+            Vector2 rayEnd = rayStart + new Vector2(MathF.Cos(radiants), MathF.Sin(radiants)) / tileSize;
             Vector2 rayDir = rayStart - rayEnd; rayDir.Normalize();
 
             Vector2 rayUnitStepSize = new(MathF.Sqrt(1 + MathF.Pow(rayDir.Y / rayDir.X, 2)), MathF.Sqrt(1 + MathF.Pow(rayDir.X / rayDir.Y, 2)));
@@ -62,22 +39,14 @@ namespace OptimizedRaycasting.Managers
 
             Vector2Int step;
 
-            if(rayDir.X < 0) {
-                step.X = -1;
-                rayLength.X = rayStart.X - mapCheck.X;
-            }
-            else {
-                step.X = 1;
-                rayLength.X = mapCheck.X + 1 - rayStart.X;
-            }
-            if(rayDir.Y < 0) {
-                step.Y = -1;
-                rayLength.Y = rayStart.Y - mapCheck.Y;
-            }
-            else {
-                step.Y = 1;
-                rayLength.Y = mapCheck.Y + 1 - rayStart.Y;
-            }
+            step = new(rayDir.X.GetValue(), rayDir.Y.GetValue());
+            if(step.X == 0) step.X = 1;
+            if(step.Y == 0) step.Y = 1;
+
+            if(rayDir.X < 0) rayLength.X = rayStart.X - mapCheck.X;
+            else rayLength.X = mapCheck.X + 1 - rayStart.X;
+            if(rayDir.Y < 0) rayLength.Y = rayStart.Y - mapCheck.Y;
+            else rayLength.Y = mapCheck.Y + 1 - rayStart.Y;
             rayLength *= rayUnitStepSize;
 
             float maxDist = 100f;
@@ -95,25 +64,24 @@ namespace OptimizedRaycasting.Managers
                     rayLength.Y += rayUnitStepSize.Y;
                 }
 
-                if(mapCheck.Y >= 0 && mapCheck.X < map.GetLength(0) && mapCheck.Y >= 0 && mapCheck.Y < map.GetLength(1)) {
-                    if(map[mapCheck.X, mapCheck.Y])
-                        tileFound = true;
-                }
-                else break;
+                if(!(mapCheck.X >= 0 && mapCheck.X < map.GetLength(0) && mapCheck.Y >= 0 && mapCheck.Y < map.GetLength(1)))
+                    break;
+                if(map[mapCheck.X, mapCheck.Y])
+                    tileFound = true;
             }
-            if(tileFound)
-                intersectionPoints[angle] = rayStart + rayDir * currentDist;
+
+            intersectionPoints[angle] = tileFound ? rayStart + rayDir * currentDist : null;
         }
         
 
         #region Draw
         public void DrawPoints(SpriteBatch spriteBatch)
         {
-            DrawCircle(spriteBatch, playerPos, 6, Color.Red);
+            DrawCircle(spriteBatch, rayStart * tileSize, 6, Color.Red);
             foreach(var point in intersectionPoints)
-                if(point != null)
+                if(point != null) {
                     DrawCircle(spriteBatch, point.Value * tileSize, 6, Color.CornflowerBlue);
-
+                }
         }
 
         public void DrawCircle(SpriteBatch spriteBatch, Vector2 center, float radius, Color color)
@@ -121,42 +89,12 @@ namespace OptimizedRaycasting.Managers
             spriteBatch.Draw(circleTexture, new Rectangle((center - Vector2.One * radius).ToPoint(), new((int)radius * 2)), color);
         }
 
-        public void DrawLine(SpriteBatch spriteBatch)
+        public void DrawLines(SpriteBatch spriteBatch)
         {
             foreach(var point in intersectionPoints) 
                 if(point != null)
-                    spriteBatch.DrawLine(playerPos, point.Value, Color.Yellow * .5f, 0);
+                    spriteBatch.DrawLine(rayStart * tileSize, point.Value * tileSize, Color.Yellow * .4f, 0);
         }
         #endregion Draw
-    }
-
-    public struct Vector2Int
-    {
-        public int X, Y;
-
-        #region Constructors
-        public Vector2Int(int x, int y)
-        {
-            X = x;
-            Y = y;
-        }
-
-        public Vector2Int(Vector2 v)
-        {
-            X = (int)v.X;
-            Y = (int)v.Y;
-        }
-
-        public Vector2Int(Vector2Int v)
-        {
-            X = v.X;
-            Y = v.Y;
-        }
-        #endregion Constructors
-
-        public Vector2 ToVector2()
-        {
-            return new(X, Y);
-        }
     }
 }
